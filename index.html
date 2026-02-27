@@ -414,20 +414,21 @@
       #hud {
         position: static;
         flex: 0 0 auto;
-        font-size: 0.62em;
-        padding: 3px 8px 2px;
+        font-size: 0.6em;
+        padding: 3px 6px 2px;
         flex-wrap: wrap;
-        gap: 0 8px;
-        letter-spacing: 0.03em;
-        line-height: 1.6;
+        gap: 0 6px;
+        letter-spacing: 0.02em;
+        line-height: 1.55;
         background: #000;
         width: 100%;
+        overflow: hidden;
       }
-      #h-score  { order: 1; flex: 1 1 auto; }
-      #h-stage  { order: 2; flex: 0 0 auto; text-align: right; }
-      #h-boss   { order: 3; flex: 1 1 100%; }
-      #h-energy { order: 4; flex: 1 1 auto; }
-      #h-special{ order: 5; flex: 0 0 auto; text-align: right; }
+      #h-score  { order: 1; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #h-stage  { order: 2; flex: 0 0 auto; text-align: right; white-space: nowrap; }
+      #h-boss   { order: 3; flex: 1 1 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #h-energy { order: 4; flex: 1 1 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      #h-special{ order: 5; flex: 0 0 auto; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 48%; }
 
       /* ── Canvas: JSがwidth/heightをpxで直接設定するのでCSSは最小限 ── */
       canvas {
@@ -520,10 +521,7 @@
       <span class="line2">Neia in<br>Xeno morph</span>
     </div>
     <div class="title-divider"></div>
-    <div class="title-controls">
-      <span>←↑→↓</span> 移動　　<span>Enter</span> 必殺技　　<span>Shift+Enter</span> 超必殺技
-    </div>
-    <div class="title-start">SPACE / クリックでスタート</div>
+    <div class="title-start" id="title-start-txt">SPACE / クリックでスタート</div>
   </div>
   <div id="wrap">
     <div id="hud">
@@ -697,16 +695,10 @@
     function anyStart() { return keys['Space'] || keys['Enter']; }
     const isMobileDevice = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
 
-    // タイトル画面の操作説明をデバイスに応じて切り替え
+    // タイトルのスタートテキストをデバイスで切り替え
     function updateTitleUI() {
       const mobile = isMobileDevice();
-      const ctrlEl = document.querySelector('.title-controls');
       const startEl = document.querySelector('.title-start');
-      if (ctrlEl) {
-        ctrlEl.innerHTML = mobile
-          ? '<span>スワイプ</span> 移動　　<span>⚡必殺技</span> ボタン　　<span>💜超必殺</span> ボタン'
-          : '<span>←↑→↓</span> 移動　　<span>Enter</span> 必殺技　　<span>Shift+Enter</span> 超必殺技';
-      }
       if (startEl) {
         startEl.textContent = mobile ? 'タップしてスタート' : 'SPACE / クリックでスタート';
       }
@@ -752,41 +744,34 @@
       }
     });
 
-    // ── タッチ操作: タップ/ドラッグした位置にキャラが向かう ──
-    let _touchId = null, _touchTargetX = null, _touchTargetY = null;
-
-    function getTouchGamePos(clientX, clientY) {
-      const rect = canvas.getBoundingClientRect();
-      // canvas の CSS 表示サイズ → 内部座標へ変換
-      const scaleX = W / (rect.width  || W);
-      const scaleY = H / (rect.height || H);
-      return {
-        x: (clientX - rect.left) * scaleX,
-        y: (clientY - rect.top)  * scaleY,
-      };
-    }
+    // ── タッチ操作: タップ起点からの差分でキャラ移動 ──
+    let _touchId = null, _touchPrevX = 0, _touchPrevY = 0;
+    let _touchDX = 0, _touchDY = 0; // 1フレーム分の移動量
 
     canvas.addEventListener('touchstart', e => {
       e.preventDefault();
-      // ゲーム開始/遷移
       if (state === 'title')    { go(); return; }
       if (state === 'gameover') { nextFromGameover(); return; }
       if (state === 'stageclear' && stageTimer > 30) { nextFromClear(); return; }
       if (state === 'ending'    && stageTimer > 30)  { state = 'title'; initGame(); return; }
       const t = e.changedTouches[0];
       _touchId = t.identifier;
-      const pos = getTouchGamePos(t.clientX, t.clientY);
-      _touchTargetX = pos.x;
-      _touchTargetY = pos.y;
+      _touchPrevX = t.clientX;
+      _touchPrevY = t.clientY;
+      _touchDX = 0; _touchDY = 0;
     }, { passive: false });
 
     canvas.addEventListener('touchmove', e => {
       e.preventDefault();
       for (const t of e.changedTouches) {
         if (t.identifier === _touchId) {
-          const pos = getTouchGamePos(t.clientX, t.clientY);
-          _touchTargetX = pos.x;
-          _touchTargetY = pos.y;
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = W / (rect.width  || W);
+          const scaleY = H / (rect.height || H);
+          _touchDX = (t.clientX - _touchPrevX) * scaleX;
+          _touchDY = (t.clientY - _touchPrevY) * scaleY;
+          _touchPrevX = t.clientX;
+          _touchPrevY = t.clientY;
         }
       }
     }, { passive: false });
@@ -795,26 +780,17 @@
       for (const t of e.changedTouches) {
         if (t.identifier === _touchId) {
           _touchId = null;
-          _touchTargetX = null;
-          _touchTargetY = null;
+          _touchDX = 0; _touchDY = 0;
         }
       }
     });
 
-    // update() の中でタッチ目標座標へ向かって移動する処理を呼ぶ
+    // update() から呼ぶ: 差分をそのままキャラ座標に加算
     function applyTouchMovement() {
-      if (_touchTargetX === null) return;
-      const TOUCH_SPEED = 7;
-      const dx = _touchTargetX - player.x;
-      const dy = _touchTargetY - player.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist > TOUCH_SPEED) {
-        player.x += (dx / dist) * TOUCH_SPEED;
-        player.y += (dy / dist) * TOUCH_SPEED;
-      } else {
-        player.x = _touchTargetX;
-        player.y = _touchTargetY;
-      }
+      if (_touchId === null) return;
+      player.x += _touchDX;
+      player.y += _touchDY;
+      _touchDX = 0; _touchDY = 0; // 消費済み
       player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x));
       player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y));
     }
@@ -1493,8 +1469,11 @@
       document.getElementById('h-score').textContent = `SCORE: ${score}`;
       document.getElementById('h-stage').textContent = `STAGE ${stage}`;
       const hr = boss ? Math.max(0, boss.hp / boss.maxHp) : 0;
-      const bars = Math.ceil(hr * 20);
-      document.getElementById('h-boss').textContent = `${boss ? boss.name : '???'} HP: ${'█'.repeat(bars)}${'░'.repeat(20 - bars)}`;
+      // 画面幅に合わせてバー数を調整（スマホ: 12本, PC: 20本）
+      const barCount = window.innerWidth <= 900 ? 12 : 20;
+      const bars = Math.ceil(hr * barCount);
+      const bossLabel = boss ? boss.name : '???';
+      document.getElementById('h-boss').textContent = `${bossLabel} ${'█'.repeat(bars)}${'░'.repeat(barCount - bars)}`;
       document.getElementById('h-energy').textContent = `ENERGY: ${'♥'.repeat(energy)}${'♡'.repeat(Math.max(0, 8 - energy))}`;
 
       const hSp = document.getElementById('h-special');
