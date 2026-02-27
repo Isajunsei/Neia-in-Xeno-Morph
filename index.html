@@ -366,193 +366,173 @@
     /* モバイルボタン */
     #mobile-controls {
       display: none;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
-      z-index: 200;
       gap: 6px;
       flex-direction: row;
-      align-items: center;
+      align-items: stretch;
       justify-content: center;
-      padding: 8px 6px;
-      padding-bottom: max(8px, env(safe-area-inset-bottom));
-      background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.5) 80%, transparent 100%);
+      padding: 6px 8px;
+      padding-bottom: max(6px, env(safe-area-inset-bottom));
+      background: rgba(0,0,0,0.92);
+      border-top: 1px solid rgba(255,255,255,0.12);
     }
 
     .sp-btn {
       display: flex;
       align-items: center;
       justify-content: center;
-      border: 1.5px solid rgba(255, 255, 255, 0.5);
+      border: 1.5px solid rgba(255,255,255,0.5);
       border-radius: 10px;
-      background: rgba(0, 0, 0, 0.65);
+      background: rgba(15,15,25,0.95);
       color: #fff;
       font-family: monospace;
       font-weight: bold;
-      font-size: 11px;
-      padding: 8px 6px;
+      font-size: 13px;
+      padding: 10px 4px;
       cursor: pointer;
       user-select: none;
       -webkit-user-select: none;
       touch-action: manipulation;
-      backdrop-filter: blur(4px);
       text-shadow: 0 0 6px currentColor;
-      transition: transform 0.1s, background 0.1s;
+      transition: transform 0.08s, background 0.08s;
       white-space: nowrap;
       flex: 1;
-      max-width: none;
+      min-height: 46px;
       line-height: 1.2;
       text-align: center;
     }
 
-    .sp-btn:active {
-      transform: scale(0.92);
-      background: rgba(255, 255, 255, 0.15);
-    }
+    .sp-btn:active { transform: scale(0.93); background: rgba(255,255,255,0.15); }
 
-    .sp-btn.btn-special {
-      border-color: #ffaa00;
-      color: #ffcc44;
-    }
-
-    .sp-btn.btn-super {
-      border-color: #cc44ff;
-      color: #dd66ff;
-    }
-
-    .sp-btn.btn-ultimate {
-      border-color: #00ccff;
-      color: #44eeff;
-    }
+    .sp-btn.btn-special  { border-color: #ffaa00; color: #ffcc44; }
+    .sp-btn.btn-super    { border-color: #cc44ff; color: #dd66ff; }
+    .sp-btn.btn-ultimate { border-color: #00ccff; color: #44eeff; }
 
     .sp-btn.btn-landscape {
       border-color: #44ff88;
       color: #66ffaa;
-      flex: 0 0 auto;
-      max-width: 42px;
-      min-width: 36px;
-      padding: 8px 6px;
-      font-size: 15px;
+      flex: 0 0 46px;
+      font-size: 22px;
+      padding: 10px 4px;
     }
 
-    @media (pointer: coarse),
-    (max-width: 900px) {
-      #mobile-controls {
-        display: flex;
-        flex-wrap: nowrap;
-      }
+    /* ===================== MOBILE ===================== */
+    @media (pointer: coarse), (max-width: 900px) {
+      #mobile-controls { display: flex; }
 
       body {
         justify-content: flex-start;
+        overflow: hidden;
+        height: 100dvh;
       }
 
+      /* #wrap が画面全体を flex で縦積みに占有 */
       #wrap {
         width: 100vw;
         max-width: 100vw;
-        flex: 1;
+        height: 100dvh;
         display: flex;
         flex-direction: column;
-        justify-content: center;
-        align-items: center;
+        overflow: hidden;
       }
 
-      /* スマホ縦向き: HUDを2段組みにして見やすく */
+      /* HUD: 3行レイアウト、固定高さ */
       #hud {
-        font-size: 0.58em;
-        padding: 3px 6px;
+        position: static;
+        flex: 0 0 auto;
+        font-size: 0.6em;
+        padding: 3px 8px 2px;
         flex-wrap: wrap;
-        gap: 1px 6px;
-        width: 100%;
-        position: absolute;
-        top: 0;
+        gap: 0 8px;
         letter-spacing: 0.03em;
-        line-height: 1.5;
+        line-height: 1.55;
+        background: #000;
+        width: 100%;
       }
-
-      /* スコアとステージを上段左右 */
-      #h-score { order: 1; flex: 1 1 auto; }
+      #h-score  { order: 1; flex: 1 1 auto; }
       #h-stage  { order: 2; flex: 0 0 auto; text-align: right; }
-      /* ボスHPを2段目に全幅 */
-      #h-boss   { order: 3; flex: 1 1 100%; font-size: 0.95em; }
-      /* ENERGYとSPを下段左右 */
+      #h-boss   { order: 3; flex: 1 1 100%; }
       #h-energy { order: 4; flex: 1 1 auto; }
       #h-special{ order: 5; flex: 0 0 auto; text-align: right; }
 
+      /* Canvas: 残り全スペースを埋める */
       canvas {
-        max-width: 100vw;
-        max-height: calc(100vh - 110px);
-        width: auto;
-        height: auto;
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 0;           /* flex shrink のために必要 */
         aspect-ratio: 576 / 384;
         object-fit: contain;
-      }
-    }
-
-    /* スマホ縦向き専用の追加調整 */
-    @media (orientation: portrait) and (pointer: coarse) {
-      canvas {
-        max-height: calc(100vh - 120px);
-        margin-top: 42px; /* HUD2段分の高さ確保 */
+        align-self: center;
       }
 
-      #hud {
-        min-height: 40px;
-      }
-    }
-
-    /* 横向き時のレイアウト最適化 */
-    @media (orientation: landscape) and (pointer: coarse) {
+      /* ボタン: flowで canvas の直下に配置 */
       #mobile-controls {
-        bottom: auto;
-        top: 0;
-        right: 0;
-        left: auto;
+        position: static;
+        flex: 0 0 auto;
+        width: 100%;
+      }
+    }
+
+    /* ===================== LANDSCAPE ===================== */
+    @media (orientation: landscape) and (pointer: coarse) {
+      body { height: 100dvh; overflow: hidden; }
+
+      #wrap {
+        flex-direction: row;
+        height: 100dvh;
+        width: 100vw;
+        align-items: stretch;
+      }
+
+      /* HUD を canvas 上に absolute で被せる */
+      #hud {
+        position: absolute;
+        top: 0; left: 0; right: 80px;
+        font-size: 0.55em;
+        padding: 3px 8px;
+        flex-wrap: nowrap;
+        gap: 0 8px;
+        letter-spacing: 0.02em;
+        line-height: 1.4;
+        background: rgba(0,0,0,0.75);
+        z-index: 50;
+      }
+      #h-score,#h-stage,#h-boss,#h-energy,#h-special { order: unset; flex: 0 0 auto; }
+      #h-boss { flex: 1 1 auto; }
+
+      canvas {
+        flex: 1 1 auto;
+        width: calc(100vw - 80px);
+        height: 100dvh;
+        aspect-ratio: 576 / 384;
+        object-fit: contain;
+        align-self: center;
+      }
+
+      #mobile-controls {
+        position: static;
+        flex: 0 0 80px;
         flex-direction: column;
-        width: auto;
-        padding: 6px;
-        padding-right: max(6px, env(safe-area-inset-right));
-        background: linear-gradient(to left, rgba(0, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.4) 70%, transparent 100%);
-        height: 100vh;
+        padding: 6px 5px;
+        padding-right: max(5px, env(safe-area-inset-right));
+        border-top: none;
+        border-left: 1px solid rgba(255,255,255,0.12);
+        height: 100dvh;
         justify-content: center;
-        gap: 5px;
+        gap: 6px;
+        width: 80px;
       }
 
       .sp-btn {
-        flex: 0 0 auto;
-        max-width: none;
-        padding: 7px 10px;
+        flex: 1 1 auto;
+        max-height: 72px;
         font-size: 10px;
+        padding: 6px 4px;
       }
-
       .sp-btn.btn-landscape {
-        font-size: 14px;
-        max-width: none;
+        flex: 0 0 46px;
+        font-size: 20px;
+        max-height: 46px;
       }
-
-      #wrap {
-        width: calc(100vw - 80px);
-      }
-
-      canvas {
-        width: calc(100vw - 80px);
-        max-height: 100vh;
-        margin-top: 0;
-      }
-
-      #hud {
-        font-size: 0.56em;
-        flex-wrap: nowrap;
-        gap: 0 6px;
-        letter-spacing: 0.02em;
-      }
-
-      /* 横向きではHUDを1段に戻す */
-      #h-score, #h-stage, #h-boss, #h-energy, #h-special {
-        order: unset;
-        flex: 0 0 auto;
-      }
-      #h-boss { flex: 1 1 auto; }
     }
   </style>
 </head>
@@ -704,21 +684,73 @@
       }
     });
 
-    // ── モバイルボタン ──
-    const toggleLandscape = (e) => {
+    // ── モバイルボタン (横向きロック) ──
+    // iOS Safari は screen.orientation.lock 非対応のため、
+    // フルスクリーン + orientation.lock を試み、失敗時は
+    // デバイスを回転するよう案内するトーストを表示する。
+    let _landscapeLocked = false;
+    const showToast = (msg, dur = 2200) => {
+      let el = document.getElementById('_toast');
+      if (!el) {
+        el = document.createElement('div');
+        el.id = '_toast';
+        Object.assign(el.style, {
+          position:'fixed', bottom:'80px', left:'50%', transform:'translateX(-50%)',
+          background:'rgba(0,0,0,0.82)', color:'#fff', fontFamily:'monospace',
+          fontSize:'13px', padding:'8px 18px', borderRadius:'8px',
+          zIndex:'9999', pointerEvents:'none', transition:'opacity 0.3s',
+          whiteSpace:'nowrap', border:'1px solid rgba(255,255,255,0.2)'
+        });
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.style.opacity = '1';
+      clearTimeout(el._t);
+      el._t = setTimeout(() => { el.style.opacity = '0'; }, dur);
+    };
+
+    const toggleLandscape = async (e) => {
       e.preventDefault();
-      if (!document.fullscreenElement) {
-        document.documentElement.requestFullscreen().then(() => {
-          if (screen.orientation && screen.orientation.lock) {
-            screen.orientation.lock('landscape').catch(() => { });
+      try {
+        if (!document.fullscreenElement) {
+          // フルスクリーンを要求
+          await (document.documentElement.requestFullscreen
+            || document.documentElement.webkitRequestFullscreen
+            || (() => Promise.reject()))
+            .call(document.documentElement);
+        }
+        // orientation.lock を試みる (Android Chrome / Safari 16.4+)
+        if (screen.orientation && screen.orientation.lock) {
+          if (!_landscapeLocked) {
+            await screen.orientation.lock('landscape');
+            _landscapeLocked = true;
+            document.getElementById('btn-landscape').textContent = '↩️';
+            showToast('🔒 横向きに固定しました');
+          } else {
+            await screen.orientation.unlock();
+            _landscapeLocked = false;
+            document.getElementById('btn-landscape').textContent = '🔄';
+            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            showToast('🔓 縦向きに戻しました');
           }
-        }).catch(() => { });
-      } else {
-        if (document.exitFullscreen) document.exitFullscreen();
-        if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock();
+        } else {
+          // iOS Safari などフォールバック: フルスクリーンだけで対応
+          if (!_landscapeLocked) {
+            _landscapeLocked = true;
+            document.getElementById('btn-landscape').textContent = '↩️';
+            showToast('📱 デバイスを横向きに回転してください');
+          } else {
+            _landscapeLocked = false;
+            document.getElementById('btn-landscape').textContent = '🔄';
+            if (document.exitFullscreen) document.exitFullscreen().catch(()=>{});
+            showToast('📱 縦向きに戻してください');
+          }
+        }
+      } catch (err) {
+        showToast('📱 デバイスを横向きに回転してください');
       }
     };
-    document.getElementById('btn-landscape').addEventListener('touchstart', toggleLandscape);
+    document.getElementById('btn-landscape').addEventListener('touchstart', toggleLandscape, {passive:false});
     document.getElementById('btn-landscape').addEventListener('click', toggleLandscape);
 
     document.getElementById('btn-sp1').addEventListener('touchstart', e => {
