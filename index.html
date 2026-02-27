@@ -618,14 +618,18 @@
     let boss = null;
     function makeBoss(idx) {
       const d = BDEFS[idx];
+      // プレイヤーの現在Y を基準に初期位置を決める（ワープ防止）
+      const startY = (player && player.y !== undefined) ? player.y : H * 0.5;
+      // centerY: ボスが自然にいる縦中心（徐々に H*0.35 付近に収束）
+      const initCenterY = startY - H * 0.35; // kbCy として使う
       return {
         name: d.name, hp: d.hp, maxHp: d.maxHp, col: d.col,
         bgHue: d.bgHue, si: d.si, bs: d.bs, ms: scaledMs(d.ms), mv: d.mv,
-        x: W * 0.72, y: H * 0.3, t: 0, phase: 1,
+        x: W * 0.72, y: startY, t: 0, phase: 1,
         flash: 0, pt: 0, pat: 0, alive: true, dt: 0,
         siOrig: d.si, mvOrig: d.mv,
-        kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: 0,
-        _trackY: undefined,
+        kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: initCenterY,
+        _trackY: startY,
         dmgAccum: 0,
       };
     }
@@ -641,7 +645,8 @@
     }
     function initStage(s) {
       stage = s; particles = []; bullets = []; enemyBullets = []; shotCD = 0;
-      player.x = W * 0.15; player.y = H * 0.5; player.inv = 0; boss = makeBoss(s - 1);
+      // プレイヤー座標はリセットしない（現在位置を維持）
+      player.inv = 0; boss = makeBoss(s - 1);
     }
 
     // ── 画面遷移の共通処理 ──
@@ -1549,11 +1554,27 @@
     function updateBoss() {
       if (!boss) return; if (!boss.alive) { boss.dt++; if (boss.dt === 1 && !cutinActive) { for (let i = 0; i < 6; i++) setTimeout(() => { boom(boss.x + (Math.random() - .5) * 110, boss.y + 55 + Math.random() * 90, true); }, i * 250); } if (boss.dt > 240) { if (stage < 4) { state = 'stageclear'; stageTimer = 0; } else { state = 'ending'; stageTimer = 0; } } return; }
       boss.pt++; if (boss.hp <= boss.maxHp * 0.35 && boss.phase === 1) { boss.phase = 2; boom(boss.x, boss.y + 55, true); shakeMag = 14; boss.mv = boss.mvOrig * 1.4; boss.si = Math.floor(boss.siOrig * 0.62); }
-      if (boss.kbTimer > 0) { boss.kbCx = (boss.kbCx || W * 0.72) + boss.kbVx; boss.kbCy = (boss.kbCy || 0) + boss.kbVy; boss.kbVx *= 0.78; boss.kbVy *= 0.78; boss.kbTimer--; boss.kbCx = Math.min(Math.max(boss.kbCx, W * 0.45), W - 20); boss.kbCy = Math.min(Math.max(boss.kbCy, -15), H * 0.7); } else { boss.kbCx += (W * 0.72 - boss.kbCx) * 0.04; boss.kbCy += (0 - boss.kbCy) * 0.04; }
-      if (boss.flash <= 0) { boss.t += 0.022; } const cx = boss.kbCx || W * 0.72, cy = boss.kbCy || 0; // ボス追従Y: ゆっくりとした自律移動（スワイプに即追従しない）
-      if (boss._trackY === undefined) boss._trackY = player.y;
-      boss._trackY += (player.y - boss._trackY) * 0.008; // lerp: 0.008=ほぼ追わない
-      const playerTrackY = (boss._trackY - H * 0.5) * 0.15; boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32; boss.y = H * 0.35 + cy + playerTrackY + Math.sin(boss.t * boss.mv * 0.82) * (H * 0.08) + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * (H * 0.04); if (boss.flash > 0) boss.flash--; if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
+      if (boss.kbTimer > 0) {
+        boss.kbCx += boss.kbVx; boss.kbCy += boss.kbVy;
+        boss.kbVx *= 0.78; boss.kbVy *= 0.78; boss.kbTimer--;
+        boss.kbCx = Math.min(Math.max(boss.kbCx, W * 0.45), W - 20);
+        boss.kbCy = Math.min(Math.max(boss.kbCy, -(H * 0.3)), H * 0.3);
+      } else {
+        // kbCx: 右寄りの定位置に緩やかに戻る
+        boss.kbCx += (W * 0.72 - boss.kbCx) * 0.03;
+        // kbCy: プレイヤーY追従をここで管理（ゆっくり）
+        boss._trackY += (player.y - boss._trackY) * 0.006;
+        const targetCy = (boss._trackY - H * 0.5) * 0.2; // 中央基準のオフセット
+        boss.kbCy += (targetCy - boss.kbCy) * 0.025; // さらに緩やかに収束
+      }
+      if (boss.flash <= 0) { boss.t += 0.022; }
+      const cx = boss.kbCx;
+      const cy = boss.kbCy;
+      // ボスの実座標: 中央(H*0.5)を基準に波打ち
+      boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32;
+      boss.y = H * 0.5 + cy + Math.sin(boss.t * boss.mv * 0.82) * (H * 0.08) + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * (H * 0.04);
+      if (boss.flash > 0) boss.flash--;
+      if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
     }
 
     let _pA = false;
