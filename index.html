@@ -438,14 +438,13 @@
 
       /* ── Canvas: 残りスペースをすべて使う ── */
       canvas {
-        flex: 1 1 0;          /* 0ベースで伸縮 */
+        flex: 1 1 0;
         min-height: 0;
         width: 100%;
+        height: 100%;
         max-width: 100%;
-        aspect-ratio: 576 / 384;
-        object-fit: contain;
-        align-self: center;
         display: block;
+        /* aspect-ratioはJSで動的にwidth/heightを設定するので不要 */
       }
 
       /* ── ボタンエリア: canvas直下に密着 ── */
@@ -498,8 +497,7 @@
         flex: 1 1 auto;
         width: calc(100vw - 75px);
         height: 100%;
-        aspect-ratio: 576 / 384;
-        object-fit: contain;
+        display: block;
         align-self: center;
         min-height: 0;
       }
@@ -561,7 +559,53 @@
   <script>
     const canvas = document.getElementById('c');
     const ctx = canvas.getContext('2d');
-    const W = 576, H = 384;
+
+    // ── ゲーム内部解像度: 画面に合わせて動的に変わる ──
+    let W = 576, H = 384;
+
+    function resizeCanvas() {
+      const btnH = document.getElementById('mobile-controls').offsetHeight || 0;
+      const hudH = document.getElementById('hud').offsetHeight || 0;
+      // スマホ判定: タッチデバイスか画面幅900px以下
+      const isMobile = (window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900);
+      if (isMobile) {
+        // 利用可能な高さ = ウィンドウ高さ - HUD - ボタン
+        const availH = window.innerHeight - hudH - btnH;
+        const availW = window.innerWidth;
+        // アスペクト比を維持しつつ最大化（縦長画面では縦いっぱいに使う）
+        const aspectGame = 576 / 384; // 3:2
+        let newW, newH;
+        if (availW / availH < aspectGame) {
+          // 縦長: 横幅に合わせる
+          newW = availW;
+          newH = Math.round(availW / aspectGame);
+        } else {
+          // 横長: 高さに合わせる
+          newH = availH;
+          newW = Math.round(availH * aspectGame);
+        }
+        // キャンバスの内部解像度を画面ピクセルに合わせる
+        if (canvas.width !== newW || canvas.height !== newH) {
+          W = newW; H = newH;
+          canvas.width = W; canvas.height = H;
+          // ボスと星の座標をリセット（次のinitで正しく再配置）
+        }
+      } else {
+        W = 576; H = 384;
+        canvas.width = W; canvas.height = H;
+      }
+    }
+
+    // 初回リサイズ
+    resizeCanvas();
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+      initStars();
+      if (boss) {
+        boss.x = W * 0.72;
+        boss.kbCx = W * 0.72;
+      }
+    });
 
     const SPECIAL_MAX = 600;
 
@@ -579,7 +623,10 @@
     let dyingTimer = 0;
     let cutinActive = false, cutinTimer = 0, cutinFired = false;
     const SPEED = 3.2, MARGIN = 8;
-    let player = { x: 30, y: 120, inv: 0 };
+    let player = { x: 30, y: 120, inv: 0 }; // 初期値、initGameで上書き
+
+    // ボス移動幅をW/Hに動的スケール (基準: 576x384)
+    function scaledMs(ms) { return Math.round(ms * (W / 576)); }
 
     const BDEFS = [
       { name: 'SLUGBRAIN', hp: 80, maxHp: 80, col: ['#7700bb', '#440077', '#aa44ff', '#00ffcc'], bgHue: 260, si: 75, bs: 2.2, ms: 70, mv: 1.0 },
@@ -593,8 +640,8 @@
       const d = BDEFS[idx];
       return {
         name: d.name, hp: d.hp, maxHp: d.maxHp, col: d.col,
-        bgHue: d.bgHue, si: d.si, bs: d.bs, ms: d.ms, mv: d.mv,
-        x: W * 0.72, y: 30, t: 0, phase: 1,
+        bgHue: d.bgHue, si: d.si, bs: d.bs, ms: scaledMs(d.ms), mv: d.mv,
+        x: W * 0.72, y: H * 0.08, t: 0, phase: 1,
         flash: 0, pt: 0, pat: 0, alive: true, dt: 0,
         siOrig: d.si, mvOrig: d.mv,
         kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: 0,
@@ -609,11 +656,11 @@
     function initGame() {
       score = 0; energy = 8; frame = 0; particles = []; bullets = []; enemyBullets = [];
       shotCD = 0; specialCD = SPECIAL_MAX; specialChargeTimer = 0; specialType = 0; shakeMag = 0; shakeX = 0; shakeY = 0; stage = 1;
-      player = { x: 30, y: 120, inv: 0 }; boss = makeBoss(0); initStars();
+      player = { x: 30, y: H * 0.3, inv: 0 }; boss = makeBoss(0); initStars();
     }
     function initStage(s) {
       stage = s; particles = []; bullets = []; enemyBullets = []; shotCD = 0;
-      player.inv = 0; boss = makeBoss(s - 1);
+      player.x = 30; player.y = H * 0.3; player.inv = 0; boss = makeBoss(s - 1);
     }
 
     // ── 画面遷移の共通処理 ──
@@ -1496,15 +1543,15 @@
     function updateBoss() {
       if (!boss) return; if (!boss.alive) { boss.dt++; if (boss.dt === 1 && !cutinActive) { for (let i = 0; i < 6; i++) setTimeout(() => { boom(boss.x + (Math.random() - .5) * 110, boss.y + 55 + Math.random() * 90, true); }, i * 250); } if (boss.dt > 240) { if (stage < 4) { state = 'stageclear'; stageTimer = 0; } else { state = 'ending'; stageTimer = 0; } } return; }
       boss.pt++; if (boss.hp <= boss.maxHp * 0.35 && boss.phase === 1) { boss.phase = 2; boom(boss.x, boss.y + 55, true); shakeMag = 14; boss.mv = boss.mvOrig * 1.4; boss.si = Math.floor(boss.siOrig * 0.62); }
-      if (boss.kbTimer > 0) { boss.kbCx = (boss.kbCx || W * 0.72) + boss.kbVx; boss.kbCy = (boss.kbCy || 0) + boss.kbVy; boss.kbVx *= 0.78; boss.kbVy *= 0.78; boss.kbTimer--; boss.kbCx = Math.min(Math.max(boss.kbCx, W * 0.45), W - 20); boss.kbCy = Math.min(Math.max(boss.kbCy, -15), H - 110); } else { boss.kbCx += (W * 0.72 - boss.kbCx) * 0.04; boss.kbCy += (0 - boss.kbCy) * 0.04; }
-      if (boss.flash <= 0) { boss.t += 0.022; } const cx = boss.kbCx || W * 0.72, cy = boss.kbCy || 0; const playerTrackY = (player.y - H * 0.3) * 0.45; boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32; boss.y = 25 + cy + playerTrackY + Math.sin(boss.t * boss.mv * 0.82) * 30 + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * 15; if (boss.flash > 0) boss.flash--; if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
+      if (boss.kbTimer > 0) { boss.kbCx = (boss.kbCx || W * 0.72) + boss.kbVx; boss.kbCy = (boss.kbCy || 0) + boss.kbVy; boss.kbVx *= 0.78; boss.kbVy *= 0.78; boss.kbTimer--; boss.kbCx = Math.min(Math.max(boss.kbCx, W * 0.45), W - 20); boss.kbCy = Math.min(Math.max(boss.kbCy, -15), H * 0.7); } else { boss.kbCx += (W * 0.72 - boss.kbCx) * 0.04; boss.kbCy += (0 - boss.kbCy) * 0.04; }
+      if (boss.flash <= 0) { boss.t += 0.022; } const cx = boss.kbCx || W * 0.72, cy = boss.kbCy || 0; const playerTrackY = (player.y - H * 0.3) * 0.6; boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32; boss.y = H * 0.06 + cy + playerTrackY + Math.sin(boss.t * boss.mv * 0.82) * 30 + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * 15; if (boss.flash > 0) boss.flash--; if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
     }
 
     let _pA = false;
     function update() {
       frame++; const aS = anyStart();
       if (state === 'stagein') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240 || (stageTimer > 10 && aS && !_pA)) { document.getElementById('overlay').style.display = 'none'; state = 'play'; } _pA = aS; return; }
-      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = 25; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
+      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = H * 0.06; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
       if (state === 'stageclear') { stageTimer++; if (stageTimer % 45 === 0) boom(Math.random() * W, Math.random() * H, true); particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer === 1) { showClearOverlay(stage); seStageClear(); } if (stageTimer > 240) { nextFromClear(); } _pA = aS; return; }
       if (state === 'ending') {
         stageTimer++;
@@ -2051,9 +2098,9 @@
       ov.innerHTML = `<div class="lastboss-label">LAST BOSS</div><div class="lastboss-name">— ABYSSAL OVERLORD —</div>`;
     }
 
-    function go() { stopBGM(); initGame(); state = 'stagein'; stageTimer = 0; showStageOverlay(1); playBGM(1); }
+    function go() { stopBGM(); resizeCanvas(); initGame(); state = 'stagein'; stageTimer = 0; showStageOverlay(1); playBGM(1); }
     function loop() { update(); draw(); requestAnimationFrame(loop); }
-    initStars(); loop();
+    resizeCanvas(); initStars(); loop();
   </script>
 </body>
 
