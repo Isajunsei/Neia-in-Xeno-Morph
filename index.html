@@ -343,11 +343,9 @@
     }
 
     canvas {
-      width: 100%;
-      aspect-ratio: 576 / 384;
+      display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
-      display: block;
     }
 
     #hud {
@@ -401,20 +399,15 @@
       body {
         justify-content: flex-start;
         overflow: hidden;
-        /* ブラウザUI込みの実高さを使う。dvh未対応ブラウザは100vh */
-        height: 100vh;
-        height: 100dvh;
       }
 
-      /* wrap が画面全体を flex 縦積みで占有 */
+      /* wrap: flexコンテナとしてHUD+canvas+ボタンを縦積み */
       #wrap {
         width: 100vw;
         max-width: 100vw;
-        height: 100vh;
-        height: 100dvh;
         display: flex;
         flex-direction: column;
-        overflow: hidden;
+        align-items: flex-start;
       }
 
       /* ── HUD: 3行レイアウト ── */
@@ -436,15 +429,10 @@
       #h-energy { order: 4; flex: 1 1 auto; }
       #h-special{ order: 5; flex: 0 0 auto; text-align: right; }
 
-      /* ── Canvas: 残りスペースをすべて使う ── */
+      /* ── Canvas: JSがwidth/heightをpxで直接設定するのでCSSは最小限 ── */
       canvas {
-        flex: 1 1 0;
-        min-height: 0;
-        width: 100%;
-        height: 100%;
-        max-width: 100%;
         display: block;
-        /* aspect-ratioはJSで動的にwidth/heightを設定するので不要 */
+        flex: 0 0 auto;
       }
 
       /* ── ボタンエリア: canvas直下に密着 ── */
@@ -494,12 +482,8 @@
       #h-boss { flex: 1 1 auto; }
 
       canvas {
-        flex: 1 1 auto;
-        width: calc(100vw - 75px);
-        height: 100%;
         display: block;
-        align-self: center;
-        min-height: 0;
+        flex: 0 0 auto;
       }
 
       /* ボタン: 右端に縦並び */
@@ -564,48 +548,46 @@
     let W = 576, H = 384;
 
     function resizeCanvas() {
-      const btnH = document.getElementById('mobile-controls').offsetHeight || 0;
-      const hudH = document.getElementById('hud').offsetHeight || 0;
-      // スマホ判定: タッチデバイスか画面幅900px以下
       const isMobile = (window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900);
       if (isMobile) {
-        // 利用可能な高さ = ウィンドウ高さ - HUD - ボタン
-        const availH = window.innerHeight - hudH - btnH;
-        const availW = window.innerWidth;
-        // アスペクト比を維持しつつ最大化（縦長画面では縦いっぱいに使う）
-        const aspectGame = 576 / 384; // 3:2
-        let newW, newH;
-        if (availW / availH < aspectGame) {
-          // 縦長: 横幅に合わせる
-          newW = availW;
-          newH = Math.round(availW / aspectGame);
-        } else {
-          // 横長: 高さに合わせる
-          newH = availH;
-          newW = Math.round(availH * aspectGame);
-        }
-        // キャンバスの内部解像度を画面ピクセルに合わせる
+        // HUD・ボタンを除いた全領域をゲームフィールドにする（アスペクト比不問）
+        const hudH  = document.getElementById('hud').offsetHeight  || 0;
+        const btnEl = document.getElementById('mobile-controls');
+        // ボタン高さ: まだ描画前は CSS から推定
+        const btnH  = btnEl.offsetHeight || 68;
+        const newW  = window.innerWidth;
+        const newH  = Math.max(100, window.innerHeight - hudH - btnH);
+        // 変化があった時だけ更新
         if (canvas.width !== newW || canvas.height !== newH) {
           W = newW; H = newH;
-          canvas.width = W; canvas.height = H;
-          // ボスと星の座標をリセット（次のinitで正しく再配置）
+          canvas.width  = W;
+          canvas.height = H;
+          // CSSもpxで明示（aspect-ratioを完全に上書き）
+          canvas.style.width  = W + 'px';
+          canvas.style.height = H + 'px';
         }
       } else {
         W = 576; H = 384;
-        canvas.width = W; canvas.height = H;
+        canvas.width  = W; canvas.height = H;
+        canvas.style.width  = '';
+        canvas.style.height = '';
       }
     }
 
-    // 初回リサイズ
-    resizeCanvas();
-    window.addEventListener('resize', () => {
+    // 初回リサイズ: DOMが描画された後に実行
+    function doResize() {
       resizeCanvas();
       initStars();
       if (boss) {
         boss.x = W * 0.72;
         boss.kbCx = W * 0.72;
       }
-    });
+    }
+    // DOMペイント後に2段階で実行（HUD高さが確定してから）
+    requestAnimationFrame(() => { requestAnimationFrame(doResize); });
+    window.addEventListener('resize', doResize);
+    // orientationchange でも再計算
+    window.addEventListener('orientationchange', () => setTimeout(doResize, 200));
 
     const SPECIAL_MAX = 600;
 
