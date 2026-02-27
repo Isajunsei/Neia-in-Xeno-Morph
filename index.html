@@ -627,6 +627,7 @@
         flash: 0, pt: 0, pat: 0, alive: true, dt: 0,
         siOrig: d.si, mvOrig: d.mv,
         kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: 0,
+        _trackY: undefined,
         dmgAccum: 0,
       };
     }
@@ -694,6 +695,24 @@
       if (!e.shiftKey) keys['Shift'] = false;
     });
     function anyStart() { return keys['Space'] || keys['Enter']; }
+    const isMobileDevice = () => window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900;
+
+    // タイトル画面の操作説明をデバイスに応じて切り替え
+    function updateTitleUI() {
+      const mobile = isMobileDevice();
+      const ctrlEl = document.querySelector('.title-controls');
+      const startEl = document.querySelector('.title-start');
+      if (ctrlEl) {
+        ctrlEl.innerHTML = mobile
+          ? '<span>スワイプ</span> 移動　　<span>⚡必殺技</span> ボタン　　<span>💜超必殺</span> ボタン'
+          : '<span>←↑→↓</span> 移動　　<span>Enter</span> 必殺技　　<span>Shift+Enter</span> 超必殺技';
+      }
+      if (startEl) {
+        startEl.textContent = mobile ? 'タップしてスタート' : 'SPACE / クリックでスタート';
+      }
+    }
+    updateTitleUI();
+    window.addEventListener('resize', updateTitleUI);
 
     document.getElementById('overlay').addEventListener('click', (e) => {
       if (e.target.closest('a')) return;
@@ -733,45 +752,72 @@
       }
     });
 
-    // ── タッチスワイプ移動 ──
-    let _touchId = null, _touchX = 0, _touchY = 0;
+    // ── タッチ操作: タップ/ドラッグした位置にキャラが向かう ──
+    let _touchId = null, _touchTargetX = null, _touchTargetY = null;
+
+    function getTouchGamePos(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      // canvas の CSS 表示サイズ → 内部座標へ変換
+      const scaleX = W / (rect.width  || W);
+      const scaleY = H / (rect.height || H);
+      return {
+        x: (clientX - rect.left) * scaleX,
+        y: (clientY - rect.top)  * scaleY,
+      };
+    }
+
     canvas.addEventListener('touchstart', e => {
       e.preventDefault();
-      if (state === 'title') { go(); return; }
+      // ゲーム開始/遷移
+      if (state === 'title')    { go(); return; }
       if (state === 'gameover') { nextFromGameover(); return; }
       if (state === 'stageclear' && stageTimer > 30) { nextFromClear(); return; }
-      if (state === 'ending' && stageTimer > 30) { state = 'title'; initGame(); return; }
+      if (state === 'ending'    && stageTimer > 30)  { state = 'title'; initGame(); return; }
       const t = e.changedTouches[0];
       _touchId = t.identifier;
-      _touchX = t.clientX;
-      _touchY = t.clientY;
+      const pos = getTouchGamePos(t.clientX, t.clientY);
+      _touchTargetX = pos.x;
+      _touchTargetY = pos.y;
     }, { passive: false });
 
     canvas.addEventListener('touchmove', e => {
       e.preventDefault();
       for (const t of e.changedTouches) {
         if (t.identifier === _touchId) {
-          const dx = t.clientX - _touchX;
-          const dy = t.clientY - _touchY;
-          // キャンバスの実際の表示サイズと内部サイズの比率を計算
-          const rect = canvas.getBoundingClientRect();
-          const scaleX = W / rect.width;
-          const scaleY = H / rect.height;
-          player.x += dx * scaleX * 1.2;
-          player.y += dy * scaleY * 1.2;
-          player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x));
-          player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y));
-          _touchX = t.clientX;
-          _touchY = t.clientY;
+          const pos = getTouchGamePos(t.clientX, t.clientY);
+          _touchTargetX = pos.x;
+          _touchTargetY = pos.y;
         }
       }
     }, { passive: false });
 
     canvas.addEventListener('touchend', e => {
       for (const t of e.changedTouches) {
-        if (t.identifier === _touchId) _touchId = null;
+        if (t.identifier === _touchId) {
+          _touchId = null;
+          _touchTargetX = null;
+          _touchTargetY = null;
+        }
       }
     });
+
+    // update() の中でタッチ目標座標へ向かって移動する処理を呼ぶ
+    function applyTouchMovement() {
+      if (_touchTargetX === null) return;
+      const TOUCH_SPEED = 7;
+      const dx = _touchTargetX - player.x;
+      const dy = _touchTargetY - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > TOUCH_SPEED) {
+        player.x += (dx / dist) * TOUCH_SPEED;
+        player.y += (dy / dist) * TOUCH_SPEED;
+      } else {
+        player.x = _touchTargetX;
+        player.y = _touchTargetY;
+      }
+      player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x));
+      player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y));
+    }
 
     const PARTICLE_MAX = 800;
     function spawnP(x, y, n, cf, spd = 3, life = 40) {
@@ -1526,15 +1572,18 @@
       if (!boss) return; if (!boss.alive) { boss.dt++; if (boss.dt === 1 && !cutinActive) { for (let i = 0; i < 6; i++) setTimeout(() => { boom(boss.x + (Math.random() - .5) * 110, boss.y + 55 + Math.random() * 90, true); }, i * 250); } if (boss.dt > 240) { if (stage < 4) { state = 'stageclear'; stageTimer = 0; } else { state = 'ending'; stageTimer = 0; } } return; }
       boss.pt++; if (boss.hp <= boss.maxHp * 0.35 && boss.phase === 1) { boss.phase = 2; boom(boss.x, boss.y + 55, true); shakeMag = 14; boss.mv = boss.mvOrig * 1.4; boss.si = Math.floor(boss.siOrig * 0.62); }
       if (boss.kbTimer > 0) { boss.kbCx = (boss.kbCx || W * 0.72) + boss.kbVx; boss.kbCy = (boss.kbCy || 0) + boss.kbVy; boss.kbVx *= 0.78; boss.kbVy *= 0.78; boss.kbTimer--; boss.kbCx = Math.min(Math.max(boss.kbCx, W * 0.45), W - 20); boss.kbCy = Math.min(Math.max(boss.kbCy, -15), H * 0.7); } else { boss.kbCx += (W * 0.72 - boss.kbCx) * 0.04; boss.kbCy += (0 - boss.kbCy) * 0.04; }
-      if (boss.flash <= 0) { boss.t += 0.022; } const cx = boss.kbCx || W * 0.72, cy = boss.kbCy || 0; const playerTrackY = (player.y - H * 0.3) * 0.6; boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32; boss.y = H * 0.06 + cy + playerTrackY + Math.sin(boss.t * boss.mv * 0.82) * 30 + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * 15; if (boss.flash > 0) boss.flash--; if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
+      if (boss.flash <= 0) { boss.t += 0.022; } const cx = boss.kbCx || W * 0.72, cy = boss.kbCy || 0; // ボス追従Y: ゆっくりとした自律移動（スワイプに即追従しない）
+      if (boss._trackY === undefined) boss._trackY = player.y;
+      boss._trackY += (player.y - boss._trackY) * 0.008; // lerp: 0.008=ほぼ追わない
+      const playerTrackY = (boss._trackY - H * 0.3) * 0.15; boss.x = cx + Math.sin(boss.t * boss.mv) * boss.ms * 0.6 + Math.sin(boss.t * boss.mv * 0.73 + 1.2) * boss.ms * 0.32; boss.y = H * 0.06 + cy + playerTrackY + Math.sin(boss.t * boss.mv * 0.82) * 30 + Math.sin(boss.t * boss.mv * 1.45 + 2.1) * 15; if (boss.flash > 0) boss.flash--; if (boss.pt >= boss.si) { boss.pt = 0; boss.pat++; fireBoss(); }
     }
 
     let _pA = false;
     function update() {
       frame++; const aS = anyStart();
-      if (state === 'stagein') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240 || (stageTimer > 10 && aS && !_pA)) { document.getElementById('overlay').style.display = 'none'; state = 'play'; } _pA = aS; return; }
-      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = H * 0.06; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
-      if (state === 'stageclear') { stageTimer++; if (stageTimer % 45 === 0) boom(Math.random() * W, Math.random() * H, true); particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer === 1) { showClearOverlay(stage); seStageClear(); } if (stageTimer > 240) { nextFromClear(); } _pA = aS; return; }
+      if (state === 'stagein') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240 || (stageTimer > 10 && aS && !_pA)) { document.getElementById('overlay').style.display = 'none'; state = 'play'; } _pA = aS; return; }
+      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = H * 0.06; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
+      if (state === 'stageclear') { stageTimer++; if (stageTimer % 45 === 0) boom(Math.random() * W, Math.random() * H, true); particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer === 1) { showClearOverlay(stage); seStageClear(); } if (stageTimer > 240) { nextFromClear(); } _pA = aS; return; }
       if (state === 'ending') {
         stageTimer++;
         if (stageTimer % 45 === 0) boom(Math.random() * W, Math.random() * H, true);
@@ -1557,7 +1606,7 @@
         _pA = aS;
         return;
       }
-      if (state === 'dying') { dyingTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (dyingTimer % 8 === 0 && dyingTimer < 80) { spawnP(player.x + (Math.random() - .5) * 40, player.y + (Math.random() - .5) * 40, 6, () => ['#ff4400', '#ffaa00', '#ffffff'][Math.floor(Math.random() * 3)], 3, 50); shakeMag = Math.max(shakeMag, 3); } if (dyingTimer > 100) { state = 'gameover'; stopBGM(); stopGameOverBGM(); _goGain = ac().createGain(); _goGain.gain.value = 0.35; _goGain.connect(getMaster()); bgmGameOver(ac().currentTime, _goGain); const ov = document.getElementById('overlay'); ov.style.display = 'flex'; ov.style.background = 'rgba(0,0,0,0.85)'; ov.innerHTML = `<h1 style="color:#ff4444">GAME OVER</h1><div class="sub">SCORE: ${score}</div><div class="prompt">SPACE / CLICK TO RETRY</div>`; } _pA = aS; return; }
+      if (state === 'dying') { dyingTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (dyingTimer % 8 === 0 && dyingTimer < 80) { spawnP(player.x + (Math.random() - .5) * 40, player.y + (Math.random() - .5) * 40, 6, () => ['#ff4400', '#ffaa00', '#ffffff'][Math.floor(Math.random() * 3)], 3, 50); shakeMag = Math.max(shakeMag, 3); } if (dyingTimer > 100) { state = 'gameover'; stopBGM(); stopGameOverBGM(); _goGain = ac().createGain(); _goGain.gain.value = 0.35; _goGain.connect(getMaster()); bgmGameOver(ac().currentTime, _goGain); const ov = document.getElementById('overlay'); ov.style.display = 'flex'; ov.style.background = 'rgba(0,0,0,0.85)'; ov.innerHTML = `<h1 style="color:#ff4444">GAME OVER</h1><div class="sub">SCORE: ${score}</div><div class="prompt">${isMobileDevice() ? 'タップしてリトライ' : 'SPACE / CLICK TO RETRY'}</div>`; } _pA = aS; return; }
       if (state === 'gameover') { _pA = aS; return; }
       if (state === 'title') { particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); _pA = aS; return; }
       if (state !== 'play') { _pA = aS; return; }
@@ -1569,6 +1618,7 @@
       if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED;
       if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED;
       if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED;
+      applyTouchMovement(); // タッチ操作（スマホ）
       player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x));
       player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y));
       if (player.inv > 0) player.inv--;
@@ -2080,7 +2130,11 @@
       ov.innerHTML = `<div class="lastboss-label">LAST BOSS</div><div class="lastboss-name">— ABYSSAL OVERLORD —</div>`;
     }
 
-    function go() { stopBGM(); resizeCanvas(); initGame(); state = 'stagein'; stageTimer = 0; showStageOverlay(1); playBGM(1); }
+    function go() {
+      // ユーザー操作で AudioContext を確実に unlock
+      try { ac().resume(); } catch(e) {}
+      stopBGM(); resizeCanvas(); initGame(); state = 'stagein'; stageTimer = 0; showStageOverlay(1); playBGM(1);
+    }
     function loop() { update(); draw(); requestAnimationFrame(loop); }
     resizeCanvas(); initStars(); loop();
   </script>
