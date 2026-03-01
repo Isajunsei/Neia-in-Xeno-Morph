@@ -394,7 +394,7 @@
     .sp-btn.btn-ultimate { border-color: #00ccff; color: #44eeff; }
 
     /* ===================== MOBILE 共通 ===================== */
-    @media (pointer: coarse), (max-width: 900px) {
+    @media (pointer: coarse) {
 
       body {
         justify-content: flex-start;
@@ -546,7 +546,7 @@
     let W = 576, H = 384;
 
     function resizeCanvas() {
-      const isMobile = (window.matchMedia('(pointer: coarse)').matches || window.innerWidth <= 900);
+      const isMobile = window.matchMedia('(pointer: coarse)').matches;
       if (isMobile) {
         // HUD・ボタンを除いた全領域をゲームフィールドにする（アスペクト比不問）
         const hudH  = document.getElementById('hud').offsetHeight  || 0;
@@ -620,15 +620,13 @@
       const d = BDEFS[idx];
       // プレイヤーの現在Y を基準に初期位置を決める（ワープ防止）
       const startY = (player && player.y !== undefined) ? player.y : H * 0.5;
-      // centerY: ボスが自然にいる縦中心（徐々に H*0.35 付近に収束）
-      const initCenterY = startY - H * 0.35; // kbCy として使う
       return {
         name: d.name, hp: d.hp, maxHp: d.maxHp, col: d.col,
         bgHue: d.bgHue, si: d.si, bs: d.bs, ms: scaledMs(d.ms), mv: d.mv,
         x: W * 0.72, y: startY, t: 0, phase: 1,
         flash: 0, pt: 0, pat: 0, alive: true, dt: 0,
         siOrig: d.si, mvOrig: d.mv,
-        kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: initCenterY,
+        kbVx: 0, kbVy: 0, kbTimer: 0, kbCx: W * 0.72, kbCy: (startY - H * 0.5) * 0.2,
         _trackY: startY,
         dmgAccum: 0,
       };
@@ -1580,8 +1578,8 @@
     let _pA = false;
     function update() {
       frame++; const aS = anyStart();
-      if (state === 'stagein') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240 || (stageTimer > 10 && aS && !_pA)) { document.getElementById('overlay').style.display = 'none'; state = 'play'; } _pA = aS; return; }
-      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = H * 0.3; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
+      if (state === 'stagein') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); updateBoss(); if (stageTimer > 240 || (stageTimer > 10 && aS && !_pA)) { document.getElementById('overlay').style.display = 'none'; state = 'play'; } _pA = aS; return; }
+      if (state === 'lastboss_entrance') { stageTimer++; particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (boss) { const ep = Math.min(1, stageTimer / 120); boss.x = W + 80 - (W + 80 - W * 0.72) * ep; boss.y = H * 0.5; boss.kbCx = boss.x; boss.kbCy = 0; boss._trackY = player.y; } if (stageTimer > 40 && stageTimer < 140) { shakeMag = 3 + Math.sin(stageTimer * 0.15) * 2; } if (stageTimer > 30 && stageTimer % 4 === 0) { spawnP(W * 0.8 + (Math.random() - 0.5) * 100, Math.random() * H, 3, () => ['#ff0000', '#440000', '#ff3333', '#000'][Math.floor(Math.random() * 4)], 2, 40); } if (stageTimer === 60) { seLastBossEntrance(); } if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer > 240) { document.getElementById('overlay').style.display = 'none'; state = 'play'; playBGM(stage); } _pA = aS; return; }
       if (state === 'stageclear') { stageTimer++; if (stageTimer % 45 === 0) boom(Math.random() * W, Math.random() * H, true); particles = particles.filter(p => { p.x += p.vx; p.y += p.vy; p.vy += p.grav; p.vx *= 0.98; p.life--; return p.life > 0; }); if (keys['ArrowLeft'] || keys['Numpad4'] || keys['KeyA']) player.x -= SPEED; if (keys['ArrowRight'] || keys['Numpad6'] || keys['KeyD']) player.x += SPEED; if (keys['ArrowUp'] || keys['Numpad8'] || keys['KeyW']) player.y -= SPEED; if (keys['ArrowDown'] || keys['Numpad2'] || keys['KeyS']) player.y += SPEED; applyTouchMovement(); player.x = Math.max(MARGIN, Math.min(W - MARGIN, player.x)); player.y = Math.max(MARGIN, Math.min(H - MARGIN, player.y)); if (stageTimer === 1) { showClearOverlay(stage); seStageClear(); } if (stageTimer > 240) { nextFromClear(); } _pA = aS; return; }
       if (state === 'ending') {
         stageTimer++;
